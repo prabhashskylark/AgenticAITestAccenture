@@ -10,13 +10,19 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write('Starting population of octofit_db...')
 
-        # Clear existing data using Django ORM
-        self.stdout.write('Deleting existing data...')
-        Activity.objects.all().delete()
-        Leaderboard.objects.all().delete()
-        Workout.objects.all().delete()
-        User.objects.all().delete()
-        Team.objects.all().delete()
+        # Clear existing data. Use pymongo to drop collections to avoid
+        # issues with mismatched primary key types in Djongo objects.
+        self.stdout.write('Deleting existing data (dropping collections if present)...')
+        try:
+            mongo_uri = settings.DATABASES['default']['CLIENT'].get('host', 'mongodb://127.0.0.1:27017')
+            client = pymongo.MongoClient(mongo_uri)
+            db_name = settings.DATABASES['default'].get('NAME', 'octofit_db')
+            db = client[db_name]
+            for col in ['activities', 'leaderboard', 'workouts', 'users', 'teams']:
+                if col in db.list_collection_names():
+                    db.drop_collection(col)
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f'Could not drop collections via pymongo: {e}'))
 
         # Create teams
         self.stdout.write('Creating teams...')
